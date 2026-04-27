@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warrant Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c0f;
+    --surface: #0d1318;
+    --surface2: #121a21;
+    --border: #1e2d3a;
+    --border2: #253545;
+    --text: #c8d8e4;
+    --text2: #6a8899;
+    --text3: #3d5566;
+    --accent: #00d4ff;
+    --accent2: #0099bb;
+    --signal: #ff4d6d;
+    --signal2: #cc1f3c;
+    --watch: #f59e0b;
+    --watch2: #b97900;
+    --ok: #22c55e;
+    --ok2: #16a34a;
+    --core: #7c3aed;
+    --spec: #0ea5e9;
+    --mono: 'Space Mono', monospace;
+    --display: 'Barlow Condensed', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,212,255,0.4);
+  }
+
+  .logo span {
+    color: var(--text3);
+    font-weight: 300;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text2);
+    text-transform: uppercase;
+  }
+
+  .pulse {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 6px var(--ok);
+    animation: pulse 2s infinite;
+  }
+
+  .pulse.idle { background: var(--text3); box-shadow: none; animation: none; }
+  .pulse.error { background: var(--signal); box-shadow: 0 0 6px var(--signal); animation: pulse 1s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.05); }
+  .btn.primary { border-color: var(--accent2); color: var(--accent); background: rgba(0,212,255,0.08); }
+  .btn.primary:hover { background: rgba(0,212,255,0.15); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filter-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-btn:hover { border-color: var(--border2); color: var(--text2); }
+  .filter-btn.active { border-color: var(--accent2); color: var(--accent); background: rgba(0,212,255,0.06); }
+  .filter-btn.active.signal-filter { border-color: var(--signal); color: var(--signal); background: rgba(255,77,109,0.06); }
+  .filter-btn.active.watch-filter { border-color: var(--watch); color: var(--watch); background: rgba(245,158,11,0.06); }
+
+  .spacer { flex: 1; }
+
+  .last-scan {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* Alert bar */
+  #alert-bar {
+    display: none;
+    padding: 8px 24px;
+    background: rgba(255,77,109,0.1);
+    border-bottom: 1px solid var(--signal2);
+    font-size: 10px;
+    color: var(--signal);
+    letter-spacing: 1px;
+    animation: flashBg 0.5s ease;
+  }
+
+  @keyframes flashBg {
+    0% { background: rgba(255,77,109,0.3); }
+    100% { background: rgba(255,77,109,0.1); }
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-cell {
+    background: var(--surface);
+    padding: 10px 16px;
+    text-align: center;
+  }
+
+  .stat-val {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-val.signal-color { color: var(--signal); text-shadow: 0 0 10px rgba(255,77,109,0.4); }
+  .stat-val.watch-color { color: var(--watch); }
+  .stat-val.ok-color { color: var(--ok); }
+
+  .stat-label {
+    font-size: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-top: 3px;
+  }
+
+  /* Section header */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 24px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .section-title.core { color: var(--core); }
+  .section-title.spec { color: var(--spec); }
+
+  .section-count {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    font-size: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    padding: 6px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:hover { color: var(--text2); }
+
+  thead th.sort-asc::after { content: ' ↑'; }
+  thead th.sort-desc::after { content: ' ↓'; }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    animation: rowFadeIn 0.3s ease forwards;
+    opacity: 0;
+  }
+
+  @keyframes rowFadeIn {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  tbody tr.signal-row { background: rgba(255,77,109,0.04); border-left: 2px solid var(--signal); }
+  tbody tr.watch-row { background: rgba(245,158,11,0.03); border-left: 2px solid var(--watch); }
+  tbody tr.signal-row:hover { background: rgba(255,77,109,0.07); }
+  tbody tr.watch-row:hover { background: rgba(245,158,11,0.06); }
+
+  td {
+    padding: 8px 12px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .ticker-cell { 
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .stock-ticker { color: var(--text); }
+  .warrant-ticker { color: var(--text2); font-size: 10px; }
+
+  .company-cell {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    color: var(--text2);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bucket-badge {
+    display: inline-block;
+    font-size: 7px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border: 1px solid;
+  }
+
+  .bucket-badge.core { border-color: var(--core); color: var(--core); background: rgba(124,58,237,0.1); }
+  .bucket-badge.spec { border-color: var(--spec); color: var(--spec); background: rgba(14,165,233,0.1); }
+
+  .price-cell {
+    font-family: var(--mono);
+    text-align: right;
+  }
+
+  .move-cell {
+    text-align: right;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .move-cell.up { color: var(--ok); }
+  .move-cell.down { color: var(--signal); }
+  .move-cell.flat { color: var(--text3); }
+
+  .vol-cell {
+    text-align: right;
+    color: var(--text2);
+  }
+
+  .vol-mult {
+    font-weight: 700;
+  }
+
+  .vol-mult.elevated { color: var(--watch); }
+  .vol-mult.very-elevated { color: var(--signal); }
+
+  .confirm-cell { text-align: center; }
+
+  .confirm-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  .confirm-dot.yes { background: var(--ok); box-shadow: 0 0 4px var(--ok); }
+  .confirm-dot.no { background: var(--text3); }
+  .confirm-dot.loading { background: var(--text3); animation: pulse 1s infinite; }
+
+  .signal-badge {
+    display: inline-block;
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    padding: 3px 10px;
+    text-transform: uppercase;
+  }
+
+  .signal-badge.SIGNAL {
+    background: var(--signal);
+    color: white;
+    box-shadow: 0 0 12px rgba(255,77,109,0.4);
+    animation: signalGlow 1.5s ease infinite alternate;
+  }
+
+  @keyframes signalGlow {
+    from { box-shadow: 0 0 8px rgba(255,77,109,0.3); }
+    to { box-shadow: 0 0 18px rgba(255,77,109,0.7); }
+  }
+
+  .signal-badge.WATCH {
+    border: 1px solid var(--watch);
+    color: var(--watch);
+    background: rgba(245,158,11,0.08);
+  }
+
+  .signal-badge.SCAN {
+    color: var(--text3);
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  .signal-badge.SKIP {
+    color: var(--text3);
+    font-size: 9px;
+    letter-spacing: 1px;
+    opacity: 0.5;
+  }
+
+  .loading-cell {
+    color: var(--text3);
+    animation: pulse 1s infinite;
+  }
+
+  .error-cell { color: var(--signal); font-size: 9px; }
+
+  /* Skips section */
+  .skips-section {
+    padding: 10px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .skips-title { text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
+
+  .skip-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    margin: 2px;
+    opacity: 0.6;
+  }
+
+  /* Footer */
+  footer {
+    padding: 12px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* Config panel */
+  .config-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .config-overlay.open { display: flex; }
+
+  .config-panel {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    width: 400px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  .config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .config-title {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .config-body { padding: 16px; }
+
+  .config-group { margin-bottom: 16px; }
+
+  .config-group-title {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .config-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .config-label { font-size: 10px; color: var(--text2); }
+
+  .config-input {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 4px 8px;
+    width: 80px;
+    text-align: right;
+  }
+
+  .config-input:focus { outline: none; border-color: var(--accent2); }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .close-btn:hover { color: var(--text); }
+
+  /* Notification permission bar */
+  #notif-bar {
+    display: none;
+    padding: 6px 24px;
+    background: rgba(124,58,237,0.1);
+    border-bottom: 1px solid rgba(124,58,237,0.3);
+    font-size: 9px;
+    color: #a78bfa;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #notif-bar.hidden { display: none !important; }
+
+  /* Empty state */
+  .empty-state {
+    padding: 30px;
+    text-align: center;
+    color: var(--text3);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Responsive tweaks */
+  @media (max-width: 768px) {
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+    .company-cell { display: none; }
+    td, th { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="notif-bar">
+  <span>⚡ Enable browser notifications to receive SIGNAL alerts</span>
+  <button class="btn" onclick="requestNotifPermission()" style="padding:3px 10px;font-size:9px;">ENABLE</button>
+  <button onclick="document.getElementById('notif-bar').classList.add('hidden')" style="background:none;border:none;color:#6a8899;cursor:pointer;font-size:10px;">✕</button>
+</div>
+
+<header>
+  <div class="logo">WARRANT<span>SCAN</span></div>
+  <div class="header-right">
+    <div class="status-badge">
+      <div class="pulse idle" id="scan-pulse"></div>
+      <span id="scan-status">IDLE</span>
+    </div>
+    <button class="btn" onclick="openConfig()">CONFIG</button>
+    <button class="btn primary" id="scan-btn" onclick="runScan()">▶ SCAN NOW</button>
+  </div>
+</header>
+
+<div id="alert-bar"></div>
+
+<div class="top-bar">
+  <div class="filter-group">
+    <span class="filter-label">View:</span>
+    <button class="filter-btn active" id="f-all" onclick="setFilter('all')">ALL</button>
+    <button class="filter-btn signal-filter" id="f-signal" onclick="setFilter('SIGNAL')">SIGNAL</button>
+    <button class="filter-btn watch-filter" id="f-watch" onclick="setFilter('WATCH')">WATCH</button>
+    <button class="filter-btn" id="f-core" onclick="setFilter('core')">CORE</button>
+    <button class="filter-btn" id="f-spec" onclick="setFilter('spec')">SPEC</button>
+  </div>
+  <div class="spacer"></div>
+  <span class="last-scan" id="last-scan-time">NO SCAN YET</span>
+</div>
+
+<div class="stats-row">
+  <div class="stat-cell">
+    <div class="stat-val" id="stat-total">—</div>
+    <div class="stat-label">Universe</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-val signal-color" id="stat-signal">—</div>
+    <div class="stat-label">Signal</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-val watch-color" id="stat-watch">—</div>
+    <div class="stat-label">Watch</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-val ok-color" id="stat-ok">—</div>
+    <div class="stat-label">Scanning</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-val" id="stat-skip">—</div>
+    <div class="stat-label">Skipped</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-val" id="stat-errors">—</div>
+    <div class="stat-label">Errors</div>
+  </div>
+</div>
+
+<!-- CORE TABLE -->
+<div class="section-header">
+  <span class="section-title core">◈ CORE LARGE-CAP</span>
+  <span class="section-count" id="core-count">—</span>
+  <span class="filter-label" style="margin-left:8px;">Move ≥12% · Vol ≥3× · Stock confirms</span>
+</div>
+<div class="table-wrap">
+  <table id="core-table">
+    <thead>
+      <tr>
+        <th onclick="sortTable('core','ticker')">Ticker</th>
+        <th>Company</th>
+        <th>Bucket</th>
+        <th onclick="sortTable('core','stockPrice')" style="text-align:right">Stock $</th>
+        <th onclick="sortTable('core','stockMove')" style="text-align:right">Stock Δ%</th>
+        <th onclick="sortTable('core','warrantPrice')" style="text-align:right">Warrant $</th>
+        <th onclick="sortTable('core','warrantMove')" style="text-align:right">Warrant Δ%</th>
+        <th onclick="sortTable('core','volMult')" style="text-align:right">Vol ×</th>
+        <th style="text-align:center">Confirms</th>
+        <th onclick="sortTable('core','status')">Status</th>
+      </tr>
+    </thead>
+    <tbody id="core-tbody">
+      <tr><td colspan="10" class="empty-state">RUN A SCAN TO POPULATE</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- SPEC TABLE -->
+<div class="section-header">
+  <span class="section-title spec">◈ SPECULATIVE WARRANTS</span>
+  <span class="section-count" id="spec-count">—</span>
+  <span class="filter-label" style="margin-left:8px;">Move ≥18% · Vol ≥4× · Stock + Options confirm</span>
+</div>
+<div class="table-wrap">
+  <table id="spec-table">
+    <thead>
+      <tr>
+        <th onclick="sortTable('spec','ticker')">Ticker</th>
+        <th>Company</th>
+        <th>Bucket</th>
+        <th onclick="sortTable('spec','stockPrice')" style="text-align:right">Stock $</th>
+        <th onclick="sortTable('spec','stockMove')" style="text-align:right">Stock Δ%</th>
+        <th onclick="sortTable('spec','warrantPrice')" style="text-align:right">Warrant $</th>
+        <th onclick="sortTable('spec','warrantMove')" style="text-align:right">Warrant Δ%</th>
+        <th onclick="sortTable('spec','volMult')" style="text-align:right">Vol ×</th>
+        <th style="text-align:center">Confirms</th>
+        <th onclick="sortTable('spec','optIV')">Opt IV</th>
+        <th onclick="sortTable('spec','status')">Status</th>
+      </tr>
+    </thead>
+    <tbody id="spec-tbody">
+      <tr><td colspan="11" class="empty-state">RUN A SCAN TO POPULATE</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="skips-section" id="skips-section" style="display:none">
+  <div class="skips-title">⊘ Skipped / Filtered</div>
+  <div id="skips-list"></div>
+</div>
+
+<footer>
+  <span>WARRANT SCANNER · POLYGON.IO · AUTO-REFRESH <span id="interval-display">10</span>MIN</span>
+  <span id="next-scan-countdown"></span>
+</footer>
+
+<!-- Config Panel -->
+<div class="config-overlay" id="config-overlay" onclick="if(event.target===this)closeConfig()">
+  <div class="config-panel">
+    <div class="config-header">
+      <span class="config-title">Config</span>
+      <button class="close-btn" onclick="closeConfig()">✕</button>
+    </div>
+    <div class="config-body">
+      <div class="config-group">
+        <div class="config-group-title">API</div>
+        <div class="config-row">
+          <span class="config-label">Polygon API Key</span>
+          <input type="password" class="config-input" id="cfg-apikey" value="" style="width:160px;" placeholder="Enter key">
+        </div>
+      </div>
+      <div class="config-group">
+        <div class="config-group-title">Scan Interval</div>
+        <div class="config-row">
+          <span class="config-label">Auto-refresh (minutes)</span>
+          <input type="number" class="config-input" id="cfg-interval" value="10" min="5" max="60">
+        </div>
+      </div>
+      <div class="config-group">
+        <div class="config-group-title">Core Thresholds</div>
+        <div class="config-row">
+          <span class="config-label">Min Warrant Move %</span>
+          <input type="number" class="config-input" id="cfg-core-move" value="12" min="1" max="100">
+        </div>
+        <div class="config-row">
+          <span class="config-label">Min Volume Multiplier</span>
+          <input type="number" class="config-input" id="cfg-core-vol" value="3" min="1" max="20" step="0.5">
+        </div>
+      </div>
+      <div class="config-group">
+        <div class="config-group-title">Speculative Thresholds</div>
+        <div class="config-row">
+          <span class="config-label">Min Warrant Move %</span>
+          <input type="number" class="config-input" id="cfg-spec-move" value="18" min="1" max="100">
+        </div>
+        <div class="config-row">
+          <span class="config-label">Min Volume Multiplier</span>
+          <input type="number" class="config-input" id="cfg-spec-vol" value="4" min="1" max="20" step="0.5">
+        </div>
+      </div>
+      <div class="config-group">
+        <div class="config-group-title">Filters</div>
+        <div class="config-row">
+          <span class="config-label">Skip final N days to expiry</span>
+          <input type="number" class="config-input" id="cfg-expiry-days" value="30" min="0" max="90">
+        </div>
+        <div class="config-row">
+          <span class="config-label">Min warrant price ($)</span>
+          <input type="number" class="config-input" id="cfg-min-price" value="0.05" min="0" max="5" step="0.01">
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn primary" onclick="saveConfig()" style="flex:1;">SAVE & CLOSE</button>
+        <button class="btn" onclick="closeConfig()">CANCEL</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// UNIVERSE DEFINITION
+// ============================================================
+const UNIVERSE = {
+  core: [
+    { ticker: 'TSLA', company: 'Tesla', sector: 'Auto/EV', hasOptions: true },
+    { ticker: 'AAPL', company: 'Apple', sector: 'Technology', hasOptions: true },
+    { ticker: 'NVDA', company: 'Nvidia', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'AMZN', company: 'Amazon', sector: 'E-Commerce', hasOptions: true },
+    { ticker: 'AMD',  company: 'AMD', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'META', company: 'Meta', sector: 'Social Media', hasOptions: true },
+    { ticker: 'MSFT', company: 'Microsoft', sector: 'Technology', hasOptions: true },
+    { ticker: 'GOOGL',company: 'Alphabet', sector: 'Technology', hasOptions: true },
+    { ticker: 'NFLX', company: 'Netflix', sector: 'Streaming', hasOptions: true },
+    { ticker: 'PLTR', company: 'Palantir', sector: 'Data/AI', hasOptions: true },
+    { ticker: 'BAC',  company: 'Bank of America', sector: 'Financials', hasOptions: true },
+    { ticker: 'UBER', company: 'Uber', sector: 'Mobility', hasOptions: true },
+    { ticker: 'CVNA', company: 'Carvana', sector: 'Auto Retail', hasOptions: true },
+    { ticker: 'BABA', company: 'Alibaba', sector: 'E-Commerce', hasOptions: true },
+    { ticker: 'COIN', company: 'Coinbase', sector: 'Crypto', hasOptions: true },
+    { ticker: 'AVGO', company: 'Broadcom', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'JPM',  company: 'JPMorgan', sector: 'Financials', hasOptions: true },
+    { ticker: 'QCOM', company: 'Qualcomm', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'PANW', company: 'Palo Alto Networks', sector: 'Cybersecurity', hasOptions: true },
+    { ticker: 'ISRG', company: 'Intuitive Surgical', sector: 'Medical Tech', hasOptions: true },
+    { ticker: 'MU',   company: 'Micron', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'SHOP', company: 'Shopify', sector: 'E-Commerce', hasOptions: true },
+    { ticker: 'ADBE', company: 'Adobe', sector: 'Software', hasOptions: true },
+    { ticker: 'INTC', company: 'Intel', sector: 'Semiconductors', hasOptions: true },
+    { ticker: 'LLY',  company: 'Eli Lilly', sector: 'Pharma', hasOptions: true },
+  ],
+  spec: [
+    { ticker: 'IONQ',  warrantTicker: 'IONQW',  company: 'IonQ', sector: 'Quantum Computing', expiryNote: null },
+    { ticker: 'JOBY',  warrantTicker: 'JOBYW',  company: 'Joby Aviation', sector: 'eVTOL', expiryNote: null },
+    { ticker: 'ACHR',  warrantTicker: 'ACHRW',  company: 'Archer Aviation', sector: 'eVTOL', expiryNote: 'Sep 2026' },
+    { ticker: 'RGTI',  warrantTicker: 'RGTIW',  company: 'Rigetti Computing', sector: 'Quantum Computing', expiryNote: 'Mar 2027' },
+    { ticker: 'GME',   warrantTicker: 'GMEW',   company: 'GameStop', sector: 'Retail/Meme', expiryNote: null },
+    { ticker: 'CORZ',  warrantTicker: 'CORZW',  company: 'Core Scientific', sector: 'Bitcoin Mining', expiryNote: 'Jan 2027' },
+    { ticker: 'TMC',   warrantTicker: 'TMCWW',  company: 'TMC the metals Co', sector: 'Metals', expiryNote: null },
+    { ticker: 'MNTS',  warrantTicker: 'MNTSW',  company: 'Momentus', sector: 'Space', expiryNote: 'Aug 2026' },
+    { ticker: 'BLDE',  warrantTicker: 'SRTAW',  company: 'Blade/Strata (SRTA)', sector: 'Air Mobility', expiryNote: 'Jul 2026', warn: 'Rebranded SRTA' },
+    { ticker: 'PL',    warrantTicker: 'PLWW',   company: 'Planet Labs', sector: 'Space Data', expiryNote: null },
+    { ticker: 'LZM',   warrantTicker: 'LZMW',   company: 'Lifezone Metals', sector: 'Metals', expiryNote: null },
+    { ticker: 'PERF',  warrantTicker: 'PERFW',  company: 'Perfect Corp', sector: 'Beauty Tech', expiryNote: null },
+    { ticker: 'HYAC',  warrantTicker: 'HYACW',  company: 'Haymaker Acqn 4', sector: 'SPAC', expiryNote: 'May 2028', warn: 'Pre-deal SPAC' },
+    { ticker: 'NUVB',  warrantTicker: null,      company: 'Nuvation Bio', sector: 'Biotech', expiryNote: null, warn: 'No public warrant found' },
+  ]
+};
+
+// ============================================================
+// CONFIG
+// ============================================================
+const DEFAULT_CONFIG = {
+  apiKey: 'oCnxKNkJjE963tmZTxFK73RcFFpd9BSu',
+  intervalMin: 10,
+  coreMinMove: 12,
+  coreMinVol: 3,
+  specMinMove: 18,
+  specMinVol: 4,
+  expirySkipDays: 30,
+  minWarrantPrice: 0.05,
+};
+
+let config = { ...DEFAULT_CONFIG };
+
+function loadConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('wscanner_config') || '{}');
+    config = { ...DEFAULT_CONFIG, ...saved };
+  } catch(e) { config = { ...DEFAULT_CONFIG }; }
+}
+
+function saveConfig() {
+  config.apiKey = document.getElementById('cfg-apikey').value || config.apiKey;
+  config.intervalMin = parseInt(document.getElementById('cfg-interval').value) || 10;
+  config.coreMinMove = parseFloat(document.getElementById('cfg-core-move').value) || 12;
+  config.coreMinVol  = parseFloat(document.getElementById('cfg-core-vol').value) || 3;
+  config.specMinMove = parseFloat(document.getElementById('cfg-spec-move').value) || 18;
+  config.specMinVol  = parseFloat(document.getElementById('cfg-spec-vol').value) || 4;
+  config.expirySkipDays = parseInt(document.getElementById('cfg-expiry-days').value) || 30;
+  config.minWarrantPrice = parseFloat(document.getElementById('cfg-min-price').value) || 0.05;
+  localStorage.setItem('wscanner_config', JSON.stringify(config));
+  document.getElementById('interval-display').textContent = config.intervalMin;
+  resetAutoRefresh();
+  closeConfig();
+}
+
+function openConfig() {
+  document.getElementById('cfg-apikey').value = config.apiKey || '';
+  document.getElementById('cfg-interval').value = config.intervalMin;
+  document.getElementById('cfg-core-move').value = config.coreMinMove;
+  document.getElementById('cfg-core-vol').value = config.coreMinVol;
+  document.getElementById('cfg-spec-move').value = config.specMinMove;
+  document.getElementById('cfg-spec-vol').value = config.specMinVol;
+  document.getElementById('cfg-expiry-days').value = config.expirySkipDays;
+  document.getElementById('cfg-min-price').value = config.minWarrantPrice;
+  document.getElementById('config-overlay').classList.add('open');
+}
+function closeConfig() { document.getElementById('config-overlay').classList.remove('open'); }
+
+// ============================================================
+// STATE
+// ============================================================
+let scanData = {}; // ticker -> result
+let currentFilter = 'all';
+let sortState = { core: { col: null, dir: 1 }, spec: { col: null, dir: 1 } };
+let autoRefreshTimer = null;
+let countdownTimer = null;
+let nextScanAt = null;
+let isScanning = false;
+
+// ============================================================
+// POLYGON API
+// ============================================================
+const BASE = 'https://api.polygon.io';
+
+async function fetchSnapshot(ticker) {
+  const url = `${BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}?apiKey=${config.apiKey}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  return d.ticker;
+}
+
+async function fetchPrevClose(ticker) {
+  const url = `${BASE}/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${config.apiKey}`;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.results?.[0] || null;
+}
+
+async function fetchAggBars(ticker, days=25) {
+  // Get enough bars to compute 20-day avg volume
+  const to = new Date(); 
+  const from = new Date(); from.setDate(from.getDate() - days * 2); // extra buffer for weekends
+  const toStr = to.toISOString().slice(0,10);
+  const fromStr = from.toISOString().slice(0,10);
+  const url = `${BASE}/v2/aggs/ticker/${ticker}/range/1/day/${fromStr}/${toStr}?adjusted=true&sort=desc&limit=30&apiKey=${config.apiKey}`;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.results || null;
+}
+
+async function fetchOptionsSnapshot(ticker) {
+  // Try options snapshot - may 403 on basic plan
+  try {
+    const url = `${BASE}/v3/snapshot/options/${ticker}?limit=10&apiKey=${config.apiKey}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.results || null;
+  } catch(e) { return null; }
+}
+
+// Compute 20-day average volume from agg bars (skip most recent bar = today)
+function compute20DayAvgVol(bars) {
+  if (!bars || bars.length < 5) return null;
+  const recent = bars.slice(1, 21); // skip index 0 (today partial), take up to 20
+  if (recent.length === 0) return null;
+  const total = recent.reduce((s, b) => s + (b.v || 0), 0);
+  return total / recent.length;
+}
+
+// Check if warrant within N days of expiry
+function isNearExpiry(expiryNote) {
+  if (!expiryNote) return false;
+  try {
+    const expiry = new Date(expiryNote);
+    if (isNaN(expiry)) return false;
+    const daysLeft = (expiry - Date.now()) / 86400000;
+    return daysLeft <= config.expirySkipDays;
+  } catch(e) { return false; }
+}
+
+// Check for stale quote (no trade today or spread > 20%)
+function isStale(snap) {
+  if (!snap) return true;
+  const lastTrade = snap.lastTrade?.t || snap.updated;
+  if (!lastTrade) return true;
+  const msAgo = Date.now() - lastTrade;
+  // More than 2 hours old during market hours = potentially stale
+  // We do a simple check: if today's volume is 0
+  if (snap.day?.v === 0 || snap.day?.v === undefined) return true;
+  return false;
+}
+
+// Check for single-lot spike: tiny volume
+function isSingleLotSpike(dayVol, avgVol) {
+  if (!dayVol) return true;
+  if (dayVol < 500) return true; // very thin
+  return false;
+}
+
+// ============================================================
+// SCAN LOGIC
+// ============================================================
+async function scanTicker(item, bucket) {
+  const result = {
+    ticker: item.ticker,
+    warrantTicker: item.warrantTicker || null,
+    company: item.company,
+    sector: item.sector,
+    bucket,
+    warn: item.warn || null,
+    expiryNote: item.expiryNote || null,
+    // stock
+    stockPrice: null, stockMove: null, stockVol: null,
+    // warrant (spec only)
+    warrantPrice: null, warrantMove: null, warrantVolMult: null, warrantVol: null,
+    // options
+    optIV: null, optVolElevated: false,
+    // derived
+    stockConfirms: false,
+    volMult: null,
+    status: 'SCAN',
+    skipReason: null,
+    error: null,
+  };
+
+  try {
+    // No warrant = skip for spec
+    if (bucket === 'spec' && !item.warrantTicker) {
+      result.status = 'SKIP';
+      result.skipReason = 'No public warrant';
+      return result;
+    }
+
+    // Near expiry check
+    if (isNearExpiry(item.expiryNote)) {
+      result.status = 'SKIP';
+      result.skipReason = `Expiry within ${config.expirySkipDays}d`;
+      return result;
+    }
+
+    // Fetch stock snapshot
+    const stockSnap = await fetchSnapshot(item.ticker);
+    
+    if (!stockSnap) { result.error = 'No data'; return result; }
+    if (stockSnap.status === 'halted') { result.status = 'SKIP'; result.skipReason = 'Halted'; return result; }
+
+    result.stockPrice = stockSnap.day?.c || stockSnap.lastTrade?.p || null;
+    result.stockMove = stockSnap.todaysChangePerc || null;
+    result.stockVol = stockSnap.day?.v || null;
+
+    // For CORE: use stock movement as the primary signal indicator
+    // Core stocks don't have warrants, so we scan options activity
+    if (bucket === 'core') {
+      // Get options data (best effort)
+      const optData = await fetchOptionsSnapshot(item.ticker);
+      let optVolElevated = false;
+      let optIV = null;
+      
+      if (optData && optData.length > 0) {
+        // Check if any contract has elevated IV (>0.5 = 50%)
+        const ivs = optData.map(o => o.implied_volatility || o.details?.iv || 0).filter(v => v > 0);
+        if (ivs.length > 0) optIV = ivs.reduce((a,b)=>a+b,0)/ivs.length;
+        
+        const vols = optData.map(o => o.day?.volume || o.day_bar?.volume || 0);
+        const totalOptVol = vols.reduce((a,b)=>a+b,0);
+        optVolElevated = totalOptVol > 1000; // basic elevated check
+        result.optVolElevated = optVolElevated;
+        result.optIV = optIV;
+      }
+
+      // Stock move confirms direction = move >= 1% in same direction (or strong absolute)
+      const absMove = Math.abs(result.stockMove || 0);
+      result.stockConfirms = absMove >= 1.0;
+      result.volMult = null; // no warrant vol mult for core
+
+      // For core, we use stock-level move + options activity as signal
+      // WATCH: stock move >= core threshold AND confirms
+      // SIGNAL: stock move >= spec threshold AND options elevated
+      const moveAbs = Math.abs(result.stockMove || 0);
+      if (moveAbs >= config.coreMinMove && result.stockConfirms) {
+        if (optVolElevated && moveAbs >= config.specMinMove) {
+          result.status = 'SIGNAL';
+        } else {
+          result.status = 'WATCH';
+        }
+      } else {
+        result.status = 'SCAN';
+      }
+
+      return result;
+    }
+
+    // SPEC bucket: fetch warrant data
+    const warrantSnap = await fetchSnapshot(item.warrantTicker);
+    
+    if (!warrantSnap) { result.error = 'Warrant data missing'; return result; }
+
+    result.warrantPrice = warrantSnap.day?.c || warrantSnap.lastTrade?.p || null;
+    result.warrantMove = warrantSnap.todaysChangePerc || null;
+    result.warrantVol = warrantSnap.day?.v || null;
+
+    // Stale / single lot check on warrant
+    if (isStale(warrantSnap)) {
+      result.status = 'SKIP';
+      result.skipReason = 'Stale warrant quote';
+      return result;
+    }
+
+    if (result.warrantPrice !== null && result.warrantPrice < config.minWarrantPrice) {
+      result.status = 'SKIP';
+      result.skipReason = `Price < $${config.minWarrantPrice}`;
+      return result;
+    }
+
+    // Compute 20-day avg volume for warrant
+    const warrantBars = await fetchAggBars(item.warrantTicker, 25);
+    const avg20Vol = compute20DayAvgVol(warrantBars);
+    
+    if (avg20Vol && avg20Vol > 0 && result.warrantVol) {
+      result.volMult = result.warrantVol / avg20Vol;
+    }
+
+    if (isSingleLotSpike(result.warrantVol, avg20Vol)) {
+      result.status = 'SKIP';
+      result.skipReason = 'Single-lot spike / thin vol';
+      return result;
+    }
+
+    // Stock confirmation: stock moves >= 0.5% in same direction as warrant
+    const warrantDir = Math.sign(result.warrantMove || 0);
+    const stockDir = Math.sign(result.stockMove || 0);
+    result.stockConfirms = (warrantDir === stockDir) && Math.abs(result.stockMove || 0) >= 0.5;
+
+    // Try options on the underlying
+    const optData = await fetchOptionsSnapshot(item.ticker);
+    if (optData && optData.length > 0) {
+      const ivs = optData.map(o => o.implied_volatility || 0).filter(v => v > 0);
+      if (ivs.length > 0) result.optIV = ivs.reduce((a,b)=>a+b,0)/ivs.length;
+      const vols = optData.map(o => o.day?.volume || 0);
+      result.optVolElevated = vols.reduce((a,b)=>a+b,0) > 500;
+    }
+
+    // Apply SIGNAL / WATCH logic
+    const moveAbs = Math.abs(result.warrantMove || 0);
+    const volOK = result.volMult !== null ? result.volMult >= config.specMinVol : false;
+    const volWatch = result.volMult !== null ? result.volMult >= config.coreMinVol : false;
+
+    if (
+      moveAbs >= config.specMinMove &&
+      volOK &&
+      result.stockConfirms &&
+      (result.optVolElevated || result.optIV > 0.5)
+    ) {
+      result.status = 'SIGNAL';
+    } else if (
+      moveAbs >= config.coreMinMove &&
+      volWatch &&
+      result.stockConfirms
+    ) {
+      result.status = 'WATCH';
+    } else {
+      result.status = 'SCAN';
+    }
+
+  } catch(e) {
+    result.error = e.message?.slice(0, 30) || 'Error';
+    result.status = 'SCAN';
+  }
+
+  return result;
+}
+
+// ============================================================
+// MAIN SCAN
+// ============================================================
+async function runScan() {
+  if (isScanning) return;
+  isScanning = true;
+
+  const btn = document.getElementById('scan-btn');
+  const pulse = document.getElementById('scan-pulse');
+  const statusEl = document.getElementById('scan-status');
+
+  btn.disabled = true;
+  btn.textContent = '◌ SCANNING';
+  pulse.className = 'pulse';
+  statusEl.textContent = 'LIVE';
+
+  // Set loading state in tables
+  setLoadingState();
+
+  const allItems = [
+    ...UNIVERSE.core.map(i => ({...i, bucket: 'core'})),
+    ...UNIVERSE.spec.map(i => ({...i, bucket: 'spec'})),
+  ];
+
+  const results = {};
+  let done = 0;
+
+  // Process in batches of 3 to respect rate limits
+  const BATCH = 3;
+  for (let i = 0; i < allItems.length; i += BATCH) {
+    const batch = allItems.slice(i, i + BATCH);
+    const batchResults = await Promise.all(batch.map(item => scanTicker(item, item.bucket)));
+    batchResults.forEach((r, idx) => {
+      results[batch[idx].ticker] = r;
+      done++;
+    });
+    // Small delay between batches
+    if (i + BATCH < allItems.length) await sleep(400);
+  }
+
+  scanData = results;
+
+  renderTables();
+  updateStats();
+  checkForAlerts();
+
+  const now = new Date();
+  document.getElementById('last-scan-time').textContent = 
+    `LAST SCAN: ${now.toLocaleTimeString()}`;
+
+  btn.disabled = false;
+  btn.textContent = '▶ SCAN NOW';
+  pulse.className = 'pulse idle';
+  statusEl.textContent = 'IDLE';
+  isScanning = false;
+
+  resetAutoRefresh();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ============================================================
+// RENDER
+// ============================================================
+function setLoadingState() {
+  const loadRow = (cols) => `<tr><td colspan="${cols}" class="loading-cell" style="padding:16px;text-align:center;letter-spacing:2px;">SCANNING UNIVERSE…</td></tr>`;
+  document.getElementById('core-tbody').innerHTML = loadRow(10);
+  document.getElementById('spec-tbody').innerHTML = loadRow(11);
+}
+
+function fmt(n, decimals=2) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return Number(n).toFixed(decimals);
+}
+
+function fmtPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${Number(n).toFixed(2)}%`;
+}
+
+function fmtVol(n) {
+  if (!n) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return n.toFixed(0);
+}
+
+function moveClass(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'flat';
+  if (n > 0.1) return 'up';
+  if (n < -0.1) return 'down';
+  return 'flat';
+}
+
+function volMultClass(n) {
+  if (!n || isNaN(n)) return '';
+  if (n >= 4) return 'very-elevated';
+  if (n >= 2) return 'elevated';
+  return '';
+}
+
+function renderTables() {
+  const coreResults = UNIVERSE.core.map(i => scanData[i.ticker]).filter(Boolean);
+  const specResults = UNIVERSE.spec.map(i => scanData[i.ticker]).filter(Boolean);
+
+  renderSection('core', coreResults, false);
+  renderSection('spec', specResults, true);
+
+  updateSkips([...coreResults, ...specResults]);
+}
+
+function renderSection(section, results, hasOptions) {
+  const tbody = document.getElementById(`${section}-tbody`);
+  const countEl = document.getElementById(`${section}-count`);
+
+  let filtered = results;
+  if (currentFilter === 'SIGNAL') filtered = results.filter(r => r.status === 'SIGNAL');
+  else if (currentFilter === 'WATCH') filtered = results.filter(r => r.status === 'WATCH');
+  else if (currentFilter === 'core') filtered = results.filter(r => r.bucket === 'core');
+  else if (currentFilter === 'spec') filtered = results.filter(r => r.bucket === 'spec');
+
+  const signals = results.filter(r => r.status === 'SIGNAL').length;
+  const watches = results.filter(r => r.status === 'WATCH').length;
+  countEl.textContent = `${results.length} tickers · ${signals} signal · ${watches} watch`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${hasOptions ? 11 : 10}" class="empty-state">NO RESULTS FOR CURRENT FILTER</td></tr>`;
+    return;
+  }
+
+  const rows = filtered.map((r, idx) => {
+    const rowClass = r.status === 'SIGNAL' ? 'signal-row' : r.status === 'WATCH' ? 'watch-row' : '';
+    const delay = idx * 0.03;
+    
+    const badgeHtml = (s) => {
+      if (s === 'SIGNAL') return `<span class="signal-badge SIGNAL">SIGNAL</span>`;
+      if (s === 'WATCH') return `<span class="signal-badge WATCH">WATCH</span>`;
+      if (s === 'SKIP') return `<span class="signal-badge SKIP">SKIP</span>`;
+      if (r.error) return `<span class="error-cell">${r.error}</span>`;
+      return `<span class="signal-badge SCAN">SCAN</span>`;
+    };
+
+    const confirmHtml = r.error ? 
+      `<span class="confirm-dot no"></span>` :
+      `<span class="confirm-dot ${r.stockConfirms ? 'yes' : 'no'}"></span>`;
+
+    const warrantDisplay = r.warrantTicker 
+      ? `<div class="warrant-ticker">${r.warrantTicker}</div>`
+      : `<div class="warrant-ticker" style="opacity:0.4">—</div>`;
+
+    const warnHtml = r.warn ? `<div style="font-size:8px;color:var(--watch);letter-spacing:0.5px;">⚠ ${r.warn}</div>` : '';
+
+    const optCell = hasOptions ? `<td class="vol-cell">${r.optIV ? (r.optIV*100).toFixed(0)+'% IV' : '—'}</td>` : '';
+
+    // Warrant price / move (spec) or stock move (core as primary)
+    const primaryMoveVal = section === 'spec' ? r.warrantMove : r.stockMove;
+    const primaryPriceVal = section === 'spec' ? r.warrantPrice : null;
+
+    return `<tr class="${rowClass}" style="animation-delay:${delay}s">
+      <td class="ticker-cell">
+        <div class="stock-ticker">${r.ticker}</div>
+        ${warrantDisplay}
+        ${warnHtml}
+      </td>
+      <td class="company-cell">${r.company}</td>
+      <td><span class="bucket-badge ${r.bucket}">${r.bucket}</span></td>
+      <td class="price-cell">${r.stockPrice !== null ? '$'+fmt(r.stockPrice) : '—'}</td>
+      <td class="move-cell ${moveClass(r.stockMove)}">${fmtPct(r.stockMove)}</td>
+      ${section === 'spec' ? `<td class="price-cell">${r.warrantPrice !== null ? '$'+fmt(r.warrantPrice, 3) : '—'}</td>` : ''}
+      <td class="move-cell ${moveClass(primaryMoveVal)}">${fmtPct(primaryMoveVal)}</td>
+      <td class="vol-cell">
+        ${r.volMult !== null ? `<span class="vol-mult ${volMultClass(r.volMult)}">${fmt(r.volMult, 1)}×</span>` : '—'}
+        <div style="font-size:9px;color:var(--text3)">${r.warrantVol ? fmtVol(r.warrantVol) : ''}</div>
+      </td>
+      <td class="confirm-cell">${confirmHtml}</td>
+      ${optCell}
+      <td>${r.status === 'SKIP' && r.skipReason ? `<span class="signal-badge SKIP">SKIP: ${r.skipReason}</span>` : badgeHtml(r.status)}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.innerHTML = rows;
+}
+
+function updateSkips(all) {
+  const skips = all.filter(r => r.status === 'SKIP');
+  const section = document.getElementById('skips-section');
+  const list = document.getElementById('skips-list');
+  
+  if (skips.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = skips.map(r => 
+    `<span class="skip-tag">${r.ticker}${r.warrantTicker ? '/'+r.warrantTicker : ''}: ${r.skipReason || 'Skipped'}</span>`
+  ).join('');
+}
+
+function updateStats() {
+  const all = Object.values(scanData);
+  const signals = all.filter(r => r.status === 'SIGNAL').length;
+  const watches = all.filter(r => r.status === 'WATCH').length;
+  const scanning = all.filter(r => r.status === 'SCAN').length;
+  const skips = all.filter(r => r.status === 'SKIP').length;
+  const errors = all.filter(r => r.error).length;
+
+  document.getElementById('stat-total').textContent = all.length;
+  document.getElementById('stat-signal').textContent = signals;
+  document.getElementById('stat-watch').textContent = watches;
+  document.getElementById('stat-ok').textContent = scanning;
+  document.getElementById('stat-skip').textContent = skips;
+  document.getElementById('stat-errors').textContent = errors;
+}
+
+// ============================================================
+// ALERTS
+// ============================================================
+function checkForAlerts() {
+  const signals = Object.values(scanData).filter(r => r.status === 'SIGNAL');
+  if (signals.length === 0) {
+    document.getElementById('alert-bar').style.display = 'none';
+    return;
+  }
+
+  const alertBar = document.getElementById('alert-bar');
+  const names = signals.map(s => `${s.ticker}${s.warrantTicker ? '/'+s.warrantTicker : ''}`).join('  ·  ');
+  alertBar.style.display = 'block';
+  alertBar.innerHTML = `⚡ SIGNAL ALERT — ${signals.length} trigger${signals.length > 1 ? 's' : ''}:  ${names}`;
+  
+  // Browser notification
+  if (Notification.permission === 'granted') {
+    signals.forEach(s => {
+      new Notification(`SIGNAL: ${s.ticker}${s.warrantTicker ? '/'+s.warrantTicker : ''}`, {
+        body: `${s.company} · Move: ${fmtPct(s.warrantMove || s.stockMove)} · Vol: ${s.volMult ? fmt(s.volMult,1)+'×' : 'N/A'}`,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="%23ff4d6d"/><text x="8" y="22" fill="white" font-size="16">⚡</text></svg>'
+      });
+    });
+  }
+}
+
+function requestNotifPermission() {
+  Notification.requestPermission().then(p => {
+    if (p === 'granted') {
+      document.getElementById('notif-bar').classList.add('hidden');
+    }
+  });
+}
+
+// ============================================================
+// FILTER & SORT
+// ============================================================
+function setFilter(f) {
+  currentFilter = f;
+  ['all','signal','watch','core','spec'].forEach(id => {
+    document.getElementById(`f-${id}`)?.classList.remove('active');
+  });
+  document.getElementById(`f-${f}`)?.classList.add('active');
+  if (Object.keys(scanData).length > 0) renderTables();
+}
+
+function sortTable(section, col) {
+  const s = sortState[section];
+  s.dir = (s.col === col) ? -s.dir : 1;
+  s.col = col;
+
+  // Update header UI
+  document.querySelectorAll(`#${section}-table thead th`).forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+  });
+
+  const results = section === 'core'
+    ? UNIVERSE.core.map(i => scanData[i.ticker]).filter(Boolean)
+    : UNIVERSE.spec.map(i => scanData[i.ticker]).filter(Boolean);
+
+  results.sort((a, b) => {
+    const av = a[col] ?? (typeof a[col] === 'string' ? '' : -Infinity);
+    const bv = b[col] ?? (typeof b[col] === 'string' ? '' : -Infinity);
+    if (typeof av === 'string') return av.localeCompare(bv) * s.dir;
+    return (av - bv) * s.dir;
+  });
+
+  // Re-render sorted
+  const tbody = document.getElementById(`${section}-tbody`);
+  const hasOptions = section === 'spec';
+  renderSection(section, results, hasOptions);
+}
+
+// ============================================================
+// AUTO REFRESH
+// ============================================================
+function resetAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
+  
+  const ms = config.intervalMin * 60 * 1000;
+  nextScanAt = Date.now() + ms;
+  
+  autoRefreshTimer = setInterval(runScan, ms);
+  countdownTimer = setInterval(updateCountdown, 1000);
+}
+
+function updateCountdown() {
+  if (!nextScanAt) return;
+  const remaining = Math.max(0, nextScanAt - Date.now());
+  const m = Math.floor(remaining / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
+  document.getElementById('next-scan-countdown').textContent = 
+    `NEXT SCAN IN ${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ============================================================
+// NOTIFICATION BAR
+// ============================================================
+function checkNotifPermission() {
+  const bar = document.getElementById('notif-bar');
+  if (Notification.permission === 'default') {
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  checkNotifPermission();
+  document.getElementById('interval-display').textContent = config.intervalMin;
+
+  // Keyboard shortcut: S = scan
+  document.addEventListener('keydown', e => {
+    if (e.key === 's' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+      runScan();
+    }
+    if (e.key === 'Escape') closeConfig();
+  });
+});
+</script>
+</body>
+</html>
